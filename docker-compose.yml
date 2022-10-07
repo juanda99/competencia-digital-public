@@ -1,0 +1,77 @@
+version: '3'
+
+services:
+  nginx-proxy:
+    hostname: nginx-proxy
+    image: jwilder/nginx-proxy
+    container_name: nginx-proxy
+    labels:
+      com.github.jrcs.letsencrypt_nginx_proxy_companion.nginx_proxy: 'true'
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - '/var/run/docker.sock:/tmp/docker.sock:ro'
+      - './vhost.d:/etc/nginx/vhost.d'
+      - './certs:/etc/nginx/certs:ro'
+      - html:/usr/share/nginx/html
+    restart: always
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '200m'
+        max-file: '5'
+  letsencrypt:
+    hostname: letsencrypt
+    image: jrcs/letsencrypt-nginx-proxy-companion:v1.12
+    container_name: letsencrypt
+    depends_on: [nginx-proxy]
+    volumes:
+      - './certs:/etc/nginx/certs:rw'
+      - '/var/run/docker.sock:/var/run/docker.sock:ro'
+      - './vhost.d:/etc/nginx/vhost.d'
+      - html:/usr/share/nginx/html
+    restart: always
+  frontend:
+    image: nginx
+    hostname: frontend
+    container_name: frontend
+    volumes:
+      - ./frontend-code:/usr/share/nginx/html
+    environment:
+      LETSENCRYPT_HOST: ${COMPETENCIAS_URL}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+      VIRTUAL_HOST: ${COMPETENCIAS_URL}
+  sftp:
+    hostname: sftp
+    container_name: sftp
+    image: atmoz/sftp
+    env_file:
+      - ./.env
+    volumes:
+      - ./ssh_keys/ssh_host_ed25519_key:/etc/ssh/ssh_host_ed25519_key
+      - ./ssh_keys/ssh_host_rsa_key:/etc/ssh/ssh_host_rsa_key
+      - ./app/data:/home/catedu/data
+
+    ports:
+      - '8005:22'
+    command: catedu:${SFTP_PASSWORD}
+    restart: always
+  api:
+    hostname: api
+    container_name: api
+    build:
+      context: ./app
+    command: 'npm run start'
+    volumes:
+      - ./app:/app
+      - libs:/app/node_modules
+    environment:
+      LETSENCRYPT_HOST: ${API_COMPETENCIAS_URL}
+      LETSENCRYPT_EMAIL: $LETSENCRYPT_EMAIL
+      VIRTUAL_HOST: ${API_COMPETENCIAS_URL}
+    restart: always
+
+volumes:
+  libs:
+  html:
